@@ -1,4 +1,5 @@
-import { FC, useState } from 'react';
+// @ts-ignore
+import React, { FC, useState, ChangeEvent } from 'react';
 import { CONTRACT_ADDRESS, fetchFiles } from './fileService';
 import {
   Button,
@@ -13,6 +14,7 @@ import {
   makeStyles,
   CircularProgress
 } from '@material-ui/core';
+import Web3 from 'web3';
 
 interface DevDoc {
   methods: object;
@@ -52,8 +54,13 @@ const useStyles = makeStyles({
   card: {
     padding: '1rem'
   },
-  textInput: {
-    marginBottom: '1rem'
+  contractAddressWrapper: {
+    display: 'flex',
+    alignItems: 'center',
+    margin: '1rem 0 2rem 0'
+  },
+  loader: {
+    marginLeft: '1rem'
   },
   descriptionWrapper: {
     marginTop: '1rem'
@@ -63,25 +70,33 @@ const useStyles = makeStyles({
   },
   methodParamWrapper: {
     marginBottom: '1rem'
+  },
+  transactionBtn: {
+    marginTop: '1rem'
   }
 });
 
 const App: FC = () => {
   const [methods, setMethods] = useState<null | Array<any>>(null);
+  const [abi, setAbi] = useState<null | Array<any>>(null)
   const [selectedMethod, setSelectedMethod] = useState<null | Method>(null);
   const [loading, setLoading] = useState<boolean>(false);
+  const [address, setAddress] = useState<string>('');
   const classes = useStyles();
 
   const handleFetchFiles = async () => {
     // get metadata.json and .sol
     setLoading(true);
     const response = await fetchFiles();
+    console.log(response);
 
     const metadataFileContent: MetadataContent = JSON.parse(response.data[0].content);
 
     const metadataFileContentOutput: MetadataContentOutput = metadataFileContent.output;
 
     const abi = metadataFileContentOutput.abi;
+    setAbi(abi);
+
     const devDoc = metadataFileContentOutput.devdoc;
 
     const met: any[] = [];
@@ -105,31 +120,59 @@ const App: FC = () => {
     setSelectedMethod(event.target.value);
   };
 
+  const handleAddressInput = async (e: ChangeEvent<HTMLInputElement>) => {
+    const { value } = e.target;
+
+    console.log(value);
+
+    setAddress(value);
+
+    if (Web3.utils.isAddress(value)) {
+      console.log('TRUE - LOAD CONTRACT');
+      await handleFetchFiles();
+    }
+  };
+
+  const sendTransaction = () => {
+    const web3 = new Web3(Web3.givenProvider);
+
+    // @ts-ignore
+    const contract = new web3.eth.Contract(abi, address);
+    console.log(contract);
+  }
 
   return (
     <Container maxWidth="sm" className="App">
       <Card className={classes.card}>
-        <TextField
-          className={classes.textInput}
-          fullWidth
-          id="standard-read-only-input"
-          disabled
-          variant="outlined"
-          label="Contract Address"
-          value={CONTRACT_ADDRESS}
-        />
-        {loading ? (
-          <CircularProgress size={30} />
-        ) : (
-          <Button variant="outlined" color="primary" onClick={handleFetchFiles}>
-            Get Methods
-          </Button>
-        )}
+        {/* INTRO */}
+        <Typography variant="h5" color="primary" gutterBottom>
+          Transaction Constructor
+        </Typography>
+        <Typography variant="body2" gutterBottom>
+          Use this app to construct custom transaction. Enter a Ethereum contract address to get
+          started.
+        </Typography>
+
+        {/* ADDRESS INPUT */}
+        <div className={classes.contractAddressWrapper}>
+          <TextField
+            fullWidth
+            id="standard-read-only-input"
+            variant="outlined"
+            label="Contract Address"
+            onChange={handleAddressInput}
+            value={address}
+          />
+          {loading && <CircularProgress className={classes.loader} size={30} />}
+        </div>
 
         {/* FORM */}
         {methods && selectedMethod && (
           <>
-            <FormControl variant="outlined" style={{ display: 'block', marginTop: '2rem' }}>
+            <Typography variant="h6" gutterBottom>
+              Transaction Information
+            </Typography>
+            <FormControl variant="outlined" fullWidth>
               <InputLabel id="demo-simple-select-outlined-label">Methods</InputLabel>
               <Select
                 fullWidth
@@ -138,7 +181,7 @@ const App: FC = () => {
                 value={selectedMethod}
                 label="Methods"
                 onChange={handleChange}>
-                {methods.map((m) => (
+                {methods.map((m: any) => (
                   <MenuItem value={m}>{m.name}</MenuItem>
                 ))}
               </Select>
@@ -177,6 +220,16 @@ const App: FC = () => {
                 ))}
               </div>
             )}
+
+            {/*  SEND TRANSACTION */}
+            <Button
+              className={classes.transactionBtn}
+              variant="contained"
+              color="primary"
+              fullWidth
+              onClick={sendTransaction}>
+              SEND TRANSACTION
+            </Button>
           </>
         )}
       </Card>
