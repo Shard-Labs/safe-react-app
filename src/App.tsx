@@ -1,6 +1,6 @@
 // @ts-ignore
 import React, { FC, useState, ChangeEvent } from 'react';
-import { CONTRACT_ADDRESS, fetchFiles } from './fileService';
+import { fetchFiles } from './fileService';
 import {
   Button,
   FormControl,
@@ -78,12 +78,12 @@ const useStyles = makeStyles({
     color: '#f05454'
   },
   responseWrapper: {
-    marginTop: '1rem',
+    marginTop: '1rem'
   }
 });
 
 // check function type - pure, view - call; else - send
-const getMethod = (methodType: any): any => {
+const getMethodName = (methodType: any): any => {
   if (!methodType) return;
 
   let types = {
@@ -110,44 +110,36 @@ const App: FC = () => {
     // get metadata.json and .sol
     setLoading(true);
     const response = await fetchFiles();
-    console.log(response);
-
     const metadataFileContent: MetadataContent = JSON.parse(response.data[0].content);
-
     const metadataFileContentOutput: MetadataContentOutput = metadataFileContent.output;
-
     const abi = metadataFileContentOutput.abi;
+
     setAbi(abi);
 
     const devDoc = metadataFileContentOutput.devdoc;
 
-    const met: any[] = [];
+    const methodsWithDocumentation: any[] = [];
 
     for (const [key, value] of Object.entries(devDoc.methods)) {
-      abi.forEach((a) => {
+      abi.forEach((method) => {
         // @ts-ignore
-        if (a.name === key.split('(')[0]) {
-          met.push({ documentation: { ...value }, ...a });
+        if (method.name === key.split('(')[0]) {
+          methodsWithDocumentation.push({ documentation: { ...value }, ...method });
         }
       });
     }
 
-    setMethods(met);
-    setSelectedMethod(met[0]);
-
-    console.log(met[0]);
+    setMethods(methodsWithDocumentation);
+    setSelectedMethod(methodsWithDocumentation[0]);
 
     // Set input state properties
     let obj = {};
-    met[0].inputs.forEach((prop) => {
-      console.log(prop);
+    methodsWithDocumentation[0].inputs.forEach((prop) => {
       obj = {
         ...obj,
         [prop.name]: null
       };
     });
-
-    console.log(obj);
 
     setInputValues(obj);
 
@@ -183,12 +175,9 @@ const App: FC = () => {
   const handleAddressInput = async (e: ChangeEvent<HTMLInputElement>) => {
     const { value } = e.target;
 
-    console.log(value);
-
     setAddress(value);
 
     if (Web3.utils.isAddress(value)) {
-      console.log('TRUE - LOAD CONTRACT');
       await handleFetchFiles();
     }
   };
@@ -204,8 +193,7 @@ const App: FC = () => {
 
     const accounts = await web3.eth.getAccounts();
 
-    let fnc = getMethod(selectedMethod?.stateMutability);
-    console.log(fnc);
+    let fnc = getMethodName(selectedMethod?.stateMutability);
 
     try {
       // @ts-ignore
@@ -213,10 +201,10 @@ const App: FC = () => {
         .apply(null, Object.values(inputValues))
         [fnc]({ from: accounts[0] });
 
-      console.log(response);
+      setError(null);
       setResponse(response);
     } catch (e) {
-      setError('Provide valid input/s values and try again!')
+      setError('Provide valid input/s values and try again!');
     }
   };
 
@@ -260,9 +248,9 @@ const App: FC = () => {
                 value={selectedMethod}
                 label="Methods"
                 onChange={handleChange}>
-                {methods.map((m: any, index: number) => (
-                  <MenuItem value={m} key={`${m.name}#${index}`}>
-                    {m.name}
+                {methods.map((method: any, index: number) => (
+                  <MenuItem value={method} key={`${method.name}#${index}`}>
+                    {method.name}
                   </MenuItem>
                 ))}
               </Select>
