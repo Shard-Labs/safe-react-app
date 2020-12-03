@@ -73,15 +73,37 @@ const useStyles = makeStyles({
   },
   transactionBtn: {
     marginTop: '1rem'
+  },
+  errorMsg: {
+    color: '#f05454'
+  },
+  responseWrapper: {
+    marginTop: '1rem',
   }
 });
 
+// check function type - pure, view - call; else - send
+const getMethod = (methodType: any): any => {
+  if (!methodType) return;
+
+  let types = {
+    default: 'send',
+    pure: 'call',
+    view: 'call'
+  };
+
+  return types[methodType] || types['default'];
+};
+
 const App: FC = () => {
   const [methods, setMethods] = useState<null | Array<any>>(null);
-  const [abi, setAbi] = useState<null | Array<any>>(null)
+  const [abi, setAbi] = useState<null | Array<any>>(null);
   const [selectedMethod, setSelectedMethod] = useState<null | Method>(null);
   const [loading, setLoading] = useState<boolean>(false);
   const [address, setAddress] = useState<string>('');
+  const [inputValues, setInputValues] = useState<{}>({});
+  const [error, setError] = useState<string | null>(null);
+  const [response, setResponse] = useState<string | null>(null);
   const classes = useStyles();
 
   const handleFetchFiles = async () => {
@@ -113,11 +135,49 @@ const App: FC = () => {
     setMethods(met);
     setSelectedMethod(met[0]);
 
+    console.log(met[0]);
+
+    // Set input state properties
+    let obj = {};
+    met[0].inputs.forEach((prop) => {
+      console.log(prop);
+      obj = {
+        ...obj,
+        [prop.name]: null
+      };
+    });
+
+    console.log(obj);
+
+    setInputValues(obj);
+
     setLoading(false);
   };
 
-  const handleChange = (event: any) => {
-    setSelectedMethod(event.target.value);
+  const handleChange = (e: any) => {
+    setSelectedMethod(e.target.value);
+    setResponse(null);
+    setError(null);
+
+    // Set input state properties
+    let obj = {};
+    e.target.value.inputs.forEach((prop) => {
+      obj = {
+        ...obj,
+        [prop.name]: null
+      };
+    });
+
+    setInputValues(obj);
+  };
+
+  const handleMethodInputChange = (e: ChangeEvent<HTMLInputElement>) => {
+    const { name, value } = e.target;
+
+    setInputValues({
+      ...inputValues,
+      [name]: value
+    });
   };
 
   const handleAddressInput = async (e: ChangeEvent<HTMLInputElement>) => {
@@ -133,13 +193,32 @@ const App: FC = () => {
     }
   };
 
-  const sendTransaction = () => {
+  const sendTransaction = async () => {
+    // @ts-ignore
+    await window.ethereum.enable();
+
     const web3 = new Web3(Web3.givenProvider);
 
     // @ts-ignore
     const contract = new web3.eth.Contract(abi, address);
-    console.log(contract);
-  }
+
+    const accounts = await web3.eth.getAccounts();
+
+    let fnc = getMethod(selectedMethod?.stateMutability);
+    console.log(fnc);
+
+    try {
+      // @ts-ignore
+      const response = await contract.methods[selectedMethod?.name]
+        .apply(null, Object.values(inputValues))
+        [fnc]({ from: accounts[0] });
+
+      console.log(response);
+      setResponse(response);
+    } catch (e) {
+      setError('Provide valid input/s values and try again!')
+    }
+  };
 
   return (
     <Container maxWidth="sm" className="App">
@@ -181,8 +260,10 @@ const App: FC = () => {
                 value={selectedMethod}
                 label="Methods"
                 onChange={handleChange}>
-                {methods.map((m: any) => (
-                  <MenuItem value={m}>{m.name}</MenuItem>
+                {methods.map((m: any, index: number) => (
+                  <MenuItem value={m} key={`${m.name}#${index}`}>
+                    {m.name}
+                  </MenuItem>
                 ))}
               </Select>
             </FormControl>
@@ -205,12 +286,14 @@ const App: FC = () => {
                 <Typography variant="subtitle2" gutterBottom>
                   Inputs
                 </Typography>
-                {selectedMethod.inputs.map((input: any) => (
-                  <div className={classes.methodParamWrapper}>
+                {selectedMethod.inputs.map((input: any, index: number) => (
+                  <div className={classes.methodParamWrapper} key={`${input.name}#${index}`}>
                     <TextField
                       fullWidth
                       id="yes"
                       variant="outlined"
+                      name={input.name}
+                      onChange={handleMethodInputChange}
                       label={`${input.name} (${input.type})`}
                     />
                     <Typography variant="caption" gutterBottom>
@@ -218,6 +301,25 @@ const App: FC = () => {
                     </Typography>
                   </div>
                 ))}
+              </div>
+            )}
+
+            {/* MESSAGES */}
+            {error && (
+              <Typography className={classes.errorMsg} variant="subtitle2" gutterBottom>
+                {error}
+              </Typography>
+            )}
+
+            {/* MESSAGES */}
+            {response && (
+              <div className={classes.responseWrapper}>
+                <Typography variant="subtitle2" gutterBottom>
+                  Result
+                </Typography>
+                <Typography variant="subtitle2" gutterBottom>
+                  {response}
+                </Typography>
               </div>
             )}
 
