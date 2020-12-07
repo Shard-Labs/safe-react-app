@@ -1,6 +1,7 @@
 // @ts-ignore
 import React, { FC, useState, ChangeEvent } from 'react';
-import { fetchFiles } from './fileService';
+import { fetchFiles } from './services/fileService';
+import { MetadataContentOutput, Method, MetadataContent } from './types';
 import {
   Button,
   FormControl,
@@ -11,89 +12,16 @@ import {
   Typography,
   Card,
   Container,
-  makeStyles,
   CircularProgress
 } from '@material-ui/core';
 import Web3 from 'web3';
+import { getMethodName } from './utils';
+import useStyles from './styles';
 
-interface DevDoc {
-  methods: object;
+interface Error {
+  addressInput?: string;
+  result?: string;
 }
-
-interface MetadataContentOutput {
-  abi: object[];
-  devdoc: DevDoc;
-  userdoc: object;
-}
-
-interface MetadataContent {
-  compiler: object;
-  language: string;
-  output: MetadataContentOutput;
-  settings: object;
-  sources: object;
-  version: number;
-}
-
-interface Method {
-  documentation: {
-    params: Array<any>;
-    details: string;
-  };
-  inputs: Array<{
-    internalType: string;
-    name: string;
-    type: string;
-  }>;
-  name: string;
-  outputs: Array<any>;
-  stateMutability: string;
-}
-
-const useStyles = makeStyles({
-  card: {
-    padding: '1rem'
-  },
-  contractAddressWrapper: {
-    display: 'flex',
-    alignItems: 'center',
-    margin: '1rem 0 2rem 0'
-  },
-  loader: {
-    marginLeft: '1rem'
-  },
-  descriptionWrapper: {
-    marginTop: '1rem'
-  },
-  methodsWrapper: {
-    marginTop: '1rem'
-  },
-  methodParamWrapper: {
-    marginBottom: '1rem'
-  },
-  transactionBtn: {
-    marginTop: '1rem'
-  },
-  errorMsg: {
-    color: '#f05454'
-  },
-  responseWrapper: {
-    marginTop: '1rem'
-  }
-});
-
-// check function type - pure, view - call; else - send
-const getMethodName = (methodType: any): any => {
-  if (!methodType) return;
-
-  let types = {
-    default: 'send',
-    pure: 'call',
-    view: 'call'
-  };
-
-  return types[methodType] || types['default'];
-};
 
 const App: FC = () => {
   const [methods, setMethods] = useState<null | Array<any>>(null);
@@ -102,14 +30,14 @@ const App: FC = () => {
   const [loading, setLoading] = useState<boolean>(false);
   const [address, setAddress] = useState<string>('');
   const [inputValues, setInputValues] = useState<{}>({});
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<Error | null>(null);
   const [response, setResponse] = useState<string | null>(null);
   const classes = useStyles();
 
-  const handleFetchFiles = async () => {
+  const handleFetchFiles = async (contractAddress: string) => {
     // get metadata.json and .sol
     setLoading(true);
-    const response = await fetchFiles();
+    const response = await fetchFiles(contractAddress);
     const metadataFileContent: MetadataContent = JSON.parse(response.data[0].content);
     const metadataFileContentOutput: MetadataContentOutput = metadataFileContent.output;
     const abi = metadataFileContentOutput.abi;
@@ -146,14 +74,43 @@ const App: FC = () => {
     setLoading(false);
   };
 
-  const handleChange = (e: any) => {
-    setSelectedMethod(e.target.value);
+  const sendTransaction = async () => {
+    // @ts-ignore
+    await window.ethereum.enable();
+
+    const web3 = new Web3(Web3.givenProvider);
+
+    // @ts-ignore
+    const contract = new web3.eth.Contract(abi, address);
+
+    const accounts = await web3.eth.getAccounts();
+
+    let fnc = getMethodName(selectedMethod?.stateMutability);
+
+    try {
+      // @ts-ignore
+      const response = await contract.methods[selectedMethod?.name]
+        .apply(null, Object.values(inputValues))
+        [fnc]({ from: accounts[0] });
+
+      setError(null);
+      setResponse(response);
+    } catch (e) {
+      setError({ result: 'Provide valid input/s values and try again!' });
+    }
+  };
+
+  const handleMethodSelect = (e: ChangeEvent<any>) => {
+    const { value } = e.target;
+
+    setSelectedMethod(value);
     setResponse(null);
     setError(null);
+    setInputValues({});
 
     // Set input state properties
     let obj = {};
-    e.target.value.inputs.forEach((prop) => {
+    value.inputs.forEach((prop) => {
       obj = {
         ...obj,
         [prop.name]: null
@@ -178,33 +135,12 @@ const App: FC = () => {
     setAddress(value);
 
     if (Web3.utils.isAddress(value)) {
-      await handleFetchFiles();
-    }
-  };
-
-  const sendTransaction = async () => {
-    // @ts-ignore
-    await window.ethereum.enable();
-
-    const web3 = new Web3(Web3.givenProvider);
-
-    // @ts-ignore
-    const contract = new web3.eth.Contract(abi, address);
-
-    const accounts = await web3.eth.getAccounts();
-
-    let fnc = getMethodName(selectedMethod?.stateMutability);
-
-    try {
-      // @ts-ignore
-      const response = await contract.methods[selectedMethod?.name]
-        .apply(null, Object.values(inputValues))
-        [fnc]({ from: accounts[0] });
-
       setError(null);
-      setResponse(response);
-    } catch (e) {
-      setError('Provide valid input/s values and try again!');
+      await handleFetchFiles(value);
+    } else {
+      setError({
+        addressInput: 'Invalid address!'
+      });
     }
   };
 
@@ -223,6 +159,8 @@ const App: FC = () => {
         {/* ADDRESS INPUT */}
         <div className={classes.contractAddressWrapper}>
           <TextField
+            error={!!error?.addressInput}
+            helperText={error?.addressInput}
             fullWidth
             id="standard-read-only-input"
             variant="outlined"
@@ -247,7 +185,7 @@ const App: FC = () => {
                 id="demo-simple-select-outlined"
                 value={selectedMethod}
                 label="Methods"
-                onChange={handleChange}>
+                onChange={handleMethodSelect}>
                 {methods.map((method: any, index: number) => (
                   <MenuItem value={method} key={`${method.name}#${index}`}>
                     {method.name}
@@ -295,7 +233,7 @@ const App: FC = () => {
             {/* MESSAGES */}
             {error && (
               <Typography className={classes.errorMsg} variant="subtitle2" gutterBottom>
-                {error}
+                {error.result}
               </Typography>
             )}
 
